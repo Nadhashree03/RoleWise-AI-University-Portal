@@ -14,7 +14,10 @@ import {
   ChevronRight,
   LogOut,
   Layers,
-  ArrowRightLeft
+  ArrowRightLeft,
+  AlertCircle,
+  Users,
+  CheckCircle2
 } from 'lucide-react';
 import { useRole, ROLES } from '../../context/RoleContext';
 import { RoleBadge } from '../common/RoleBadge';
@@ -44,11 +47,35 @@ export const Sidebar = ({ isCollapsed, setIsCollapsed, mobileOpen, setMobileOpen
       icon: Compass,
       badge: null,
     },
+    ...(currentRole === ROLES.ADMIN ? [
+      {
+        to: '/analytics',
+        label: 'A/B Analytics',
+        icon: BarChart3,
+        badge: 'Live',
+        badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
+      },
+      {
+        to: '/analytics/errors',
+        label: 'Error Forensics',
+        icon: AlertCircle,
+        badge: 'Admin',
+        badgeColor: 'bg-rose-500/20 text-rose-300 border-rose-500/30',
+      },
+      {
+        to: '/validation',
+        label: 'Validation',
+        icon: Users,
+        badge: 'Admin',
+        badgeColor: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
+      },
+    ] : []),
     {
-      to: '/analytics',
-      label: 'Analytics',
-      icon: BarChart3,
-      badge: currentRole === ROLES.ADMIN ? 'Full' : null,
+      to: '/risks',
+      label: 'Risk Register',
+      icon: ShieldCheck,
+      badge: 'R1-R10',
+      badgeColor: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30',
     },
     {
       to: '/audit',
@@ -56,6 +83,20 @@ export const Sidebar = ({ isCollapsed, setIsCollapsed, mobileOpen, setMobileOpen
       icon: ShieldAlert,
       badge: currentRole === ROLES.ADMIN ? 'Admin' : 'Restricted',
       badgeColor: currentRole === ROLES.ADMIN ? 'bg-amber-500/20 text-amber-300' : 'bg-slate-800 text-slate-400',
+    },
+    {
+      to: '/guide',
+      label: 'User Guide',
+      icon: BookOpen,
+      badge: 'Docs',
+      badgeColor: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30',
+    },
+    {
+      to: '/compliance',
+      label: 'Compliance Checklist',
+      icon: CheckCircle2,
+      badge: '96%',
+      badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30 font-mono',
     },
     {
       to: '/settings',

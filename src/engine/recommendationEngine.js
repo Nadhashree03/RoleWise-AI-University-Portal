@@ -510,16 +510,25 @@ export const evaluateDiscoveryQuery = (rawQuery, currentRole = ROLES.STUDENT) =>
       ? 'ROLE_MATCH + KEYWORD_MATCH + USAGE_EVIDENCE'
       : `${ruleInfo.ruleId} + ROLE_CLEARANCE`);
 
+  const confidenceLevel = calculatedConfidence >= 85 ? 'High' : calculatedConfidence >= 65 ? 'Medium' : 'Low';
+
   const otherRecommendations = sortedScored
-    .slice(1, 3)
+    .slice(1, 4)
     .filter((m) => m.isAllowed && m.score > 15)
-    .map((m) => m.feature);
+    .map((m) => ({
+      ...m.feature,
+      matchScore: m.score,
+      confidenceScore: Math.min(88, Math.max(60, Math.round(m.score + 30))),
+      confidenceLevel: m.score >= 50 ? 'High' : m.score >= 30 ? 'Medium' : 'Low',
+      why: RECOMMENDATION_RULES[m.feature.id]?.why || `Alternative match for ${currentRole} workspace.`,
+    }));
 
   return {
     status: 'SUCCESS',
     feature,
     confidence: calculatedConfidence,
     confidenceStr: `${calculatedConfidence}%`,
+    confidenceLevel,
     shortDescription: feature.description,
     why: ruleInfo.why,
     detectedIntent: ruleInfo.intent || detectTaskIntent(query, currentRole),

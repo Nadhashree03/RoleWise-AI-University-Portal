@@ -11,8 +11,18 @@ import {
 } from '../data/mockData';
 import { FeatureActionModal } from '../components/features/FeatureActionModal';
 import { ToastNotification } from '../components/common/ToastNotification';
-import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { Lock, ArrowRight, X, ShieldAlert, KeyRound } from 'lucide-react';
+import {
+  authApi,
+  feeApi,
+  attendanceApi,
+  admissionApi,
+  certificateApi,
+  auditApi,
+  historyApi,
+  overrideApi,
+  analyticsApi,
+} from '../services/api';
 
 const RoleContext = createContext();
 
@@ -124,7 +134,19 @@ export const RoleProvider = ({ children }) => {
   const [auditLogs, setAuditLogs] = useState(() => {
     const saved = localStorage.getItem('rolewise_audit_logs');
     if (saved) {
-      try { return JSON.parse(saved); } catch (e) {}
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.map((l) => ({
+            ...l,
+            event: l.event || l.action || 'EVENT',
+            target: l.target || l.module || 'system',
+            action: l.action || l.event || 'EVENT',
+            module: l.module || l.target || 'system',
+            status: l.status || 'Authorized',
+          }));
+        }
+      } catch (e) {}
     }
     return [
       ...FEATURE_USAGE_EVENTS.map((evt) => ({
@@ -133,7 +155,9 @@ export const RoleProvider = ({ children }) => {
         actor: `${evt.userId} (${evt.userRole})`,
         role: evt.userRole,
         event: evt.action,
+        action: evt.action,
         target: evt.featureId,
+        module: evt.featureId,
         status: evt.status === 'SUCCESS' ? 'Authorized' : 'Denied (403)',
         ip: evt.networkIp,
         duration: `${evt.durationMs}ms`,
@@ -145,7 +169,9 @@ export const RoleProvider = ({ children }) => {
         actor: '2023BCSE0142 (student)',
         role: ROLES.STUDENT,
         event: 'RESTRICTED_ACCESS_ATTEMPT',
+        action: 'RESTRICTED_ACCESS_ATTEMPT',
         target: 'manage-admissions',
+        module: 'manage-admissions',
         status: 'Denied (403)',
         ip: '172.16.8.219 (Campus Wi-Fi)',
         duration: '45ms',
@@ -238,6 +264,75 @@ export const RoleProvider = ({ children }) => {
     }, 4500);
   };
 
+  const syncWithBackend = async () => {
+    try {
+      if (currentRole === ROLES.STUDENT) {
+        const feeRes = await feeApi.getMyFee().catch(() => null);
+        if (feeRes?.fee) setStudentFeeStatus(feeRes.fee);
+
+        const admRes = await admissionApi.getMyAdmission().catch(() => null);
+        if (admRes?.admission) {
+          setAdmissionsList((prev) => {
+            const idx = prev.findIndex((a) => a.studentId === admRes.admission.studentId || a.id === admRes.admission.id);
+            if (idx >= 0) {
+              const updated = [...prev];
+              updated[idx] = { ...updated[idx], ...admRes.admission };
+              return updated;
+            }
+            return prev;
+          });
+        }
+
+        const certRes = await certificateApi.getMyCertificates().catch(() => null);
+        if (certRes?.certificates && Array.isArray(certRes.certificates) && certRes.certificates.length > 0) {
+          setGeneratedCertificatesList(certRes.certificates);
+        }
+      } else if (currentRole === ROLES.FACULTY) {
+        const attRes = await attendanceApi.getCourseRoster('CS701').catch(() => null);
+        if (attRes?.roster) setAttendanceRosterList(attRes.roster);
+      } else if (currentRole === ROLES.ADMIN) {
+        const feeRecs = await feeApi.getRecords().catch(() => null);
+        if (feeRecs?.records) setFeeRecordsList(feeRecs.records);
+
+        const admRes = await admissionApi.getAdmissions().catch(() => null);
+        if (admRes?.applications) setAdmissionsList(admRes.applications);
+
+        const attRes = await attendanceApi.getCourseRoster('CS701').catch(() => null);
+        if (attRes?.roster) setAttendanceRosterList(attRes.roster);
+
+        const certRes = await certificateApi.getCertificates().catch(() => null);
+        if (certRes?.certificates) setGeneratedCertificatesList(certRes.certificates);
+
+        const auditRes = await auditApi.getLogs({ limit: 50 }).catch(() => null);
+        if (auditRes?.logs && Array.isArray(auditRes.logs)) {
+          const normalizedLogs = auditRes.logs.map((l) => ({
+            ...l,
+            event: l.event || l.action || 'EVENT',
+            target: l.target || l.module || 'system',
+            action: l.action || l.event || 'EVENT',
+            module: l.module || l.target || 'system',
+            status: l.status || 'Authorized',
+          }));
+          setAuditLogs(normalizedLogs);
+        }
+
+        const histRes = await historyApi.getHistory().catch(() => null);
+        if (histRes?.changes) setChangeHistory(histRes.changes);
+
+        const ovrRes = await overrideApi.getOverrides().catch(() => null);
+        if (ovrRes?.overrides) setActiveOverrides(ovrRes.overrides);
+      }
+    } catch (err) {
+      console.warn('[Sync] Background sync with backend:', err.message);
+    }
+  };
+
+  useEffect(() => {
+    if (isLoggedIn) {
+      syncWithBackend();
+    }
+  }, [isLoggedIn, currentRole]);
+
   const logAuditEvent = ({ event, target, status, ip = '127.0.0.1 (Local Session)', overrideReason = null, details = null }) => {
     const newEntry = {
       id: `EVT-${Math.floor(1000 + Math.random() * 9000)}`,
@@ -253,6 +348,18 @@ export const RoleProvider = ({ children }) => {
       details,
     };
     setAuditLogs((prev) => [newEntry, ...prev]);
+
+    // Dispatch to backend API asynchronously
+    auditApi.logEvent({
+      event,
+      action: event,
+      target: target || 'system',
+      module: target || 'system',
+      status: status || 'Authorized',
+      ip,
+      details,
+      overrideReason,
+    }).catch(() => {});
   };
 
   const recordAssistantAudit = ({
@@ -425,7 +532,7 @@ export const RoleProvider = ({ children }) => {
     }
   };
 
-  const login = (identifier, password) => {
+  const login = async (identifier, password) => {
     // 1. Validate empty inputs
     if (!identifier || !identifier.trim()) {
       return { success: false, error: 'Please enter your University Email or User ID.' };
@@ -434,9 +541,38 @@ export const RoleProvider = ({ children }) => {
       return { success: false, error: 'Please enter your password.' };
     }
 
-    const cleanId = identifier.trim().toLowerCase();
+    try {
+      // 1. Attempt real backend JWT login
+      const response = await authApi.login(identifier, password);
+      if (response && response.success && response.user) {
+        setCurrentRole(response.user.role);
+        setIsLoggedIn(true);
+        setActiveFeature(null);
+        setRestrictedFeature(null);
+        setOverrideModalOpen(false);
 
-    // 2. Locate matching account in DEMO_ACCOUNTS
+        localStorage.setItem('rolewise_role', response.user.role);
+        localStorage.setItem('rolewise_logged_in', 'true');
+
+        showToast(
+          `Welcome, ${response.user.name}`,
+          `Successfully signed in as ${response.user.role.toUpperCase()} (JWT Authenticated) • University Student Services Portal`,
+          'success'
+        );
+
+        syncWithBackend();
+
+        return { success: true, role: response.user.role, user: response.user };
+      }
+    } catch (apiErr) {
+      if (apiErr.status === 401 || apiErr.status === 400) {
+        return { success: false, error: apiErr.message };
+      }
+      console.warn('[Auth] Backend API offline, utilizing fallback verification:', apiErr.message);
+    }
+
+    // 2. Local fallback if backend server is offline during offline evaluation
+    const cleanId = identifier.trim().toLowerCase();
     const account = DEMO_ACCOUNTS.find(
       (acc) =>
         acc.email.toLowerCase() === cleanId ||
@@ -514,7 +650,7 @@ export const RoleProvider = ({ children }) => {
     }
   };
 
-  const logout = () => {
+  const logout = async () => {
     logAuditEvent({
       event: 'USER_LOGOUT',
       target: 'auth/logout',
@@ -524,6 +660,10 @@ export const RoleProvider = ({ children }) => {
       role: currentRole,
       details: `User ${currentUser.name} (${currentUser.id}) voluntarily ended university session.`,
     });
+
+    try {
+      await authApi.logout();
+    } catch (e) {}
 
     setIsLoggedIn(false);
     localStorage.setItem('rolewise_logged_in', 'false');
@@ -798,6 +938,7 @@ export const RoleProvider = ({ children }) => {
         recordAssistantAudit,
         logAuditEvent,
         showToast,
+        syncWithBackend,
         studentFeeStatus,
         admissionsList,
         feeRecordsList,

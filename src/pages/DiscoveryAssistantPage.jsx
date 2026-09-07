@@ -37,12 +37,14 @@ import {
   FileText,
   Lightbulb,
   ThumbsDown,
+  ThumbsUp,
   ArrowUpRight,
   Split
 } from 'lucide-react';
 import { useRole, ROLES } from '../context/RoleContext';
 import { GlassCard } from '../components/common/GlassCard';
 import { RoleBadge } from '../components/common/RoleBadge';
+import { recommendationApi } from '../services/api';
 import {
   evaluateDiscoveryQuery,
   getRecommendationsForRole,
@@ -67,6 +69,8 @@ export const DiscoveryAssistantPage = () => {
 
   const [activeTab, setActiveTab] = useState('assistant'); // 'assistant' | 'underused' | 'experiment'
   const [query, setQuery] = useState('');
+  const [activeEventId, setActiveEventId] = useState(null);
+  const [feedbackStatus, setFeedbackStatus] = useState({}); // featureId -> 'helpful' | 'not_helpful'
   const [queryHistory, setQueryHistory] = useState([
     'How can I pay my fees?',
     'Check my attendance',
@@ -74,6 +78,25 @@ export const DiscoveryAssistantPage = () => {
   ]);
   const [expandedEvidence, setExpandedEvidence] = useState(true);
   const [rejectedFeatures, setRejectedFeatures] = useState({}); // featureId -> reason
+
+  // Fetch recent recommendation query history on mount
+  useEffect(() => {
+    recommendationApi.getHistory()
+      .then((res) => {
+        if (res?.history && Array.isArray(res.history)) {
+          const pastQueries = res.history
+            .map((h) => h.query)
+            .filter((q) => q && q.trim().length > 0);
+          if (pastQueries.length > 0) {
+            setQueryHistory((prev) => {
+              const set = new Set([...pastQueries, ...prev]);
+              return Array.from(set).slice(0, 7);
+            });
+          }
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // Override reason modal state
   const [overrideModal, setOverrideModal] = useState({
@@ -94,6 +117,7 @@ export const DiscoveryAssistantPage = () => {
   useEffect(() => {
     setQuery('');
     setRejectedFeatures({});
+    setFeedbackStatus({});
   }, [currentRole]);
 
   // Role query pills
@@ -154,12 +178,25 @@ export const DiscoveryAssistantPage = () => {
   const underusedFeatures = getUnderusedFeaturesForRole(currentRole);
 
   // Action: Submit a query
-  const handleQuerySelect = (newQuery) => {
+  const handleQuerySelect = async (newQuery) => {
     setQuery(newQuery);
     if (!queryHistory.includes(newQuery)) {
-      setQueryHistory((prev) => [newQuery, ...prev.slice(0, 5)]);
+      setQueryHistory((prev) => [newQuery, ...prev.slice(0, 6)]);
     }
     const evalRes = evaluateDiscoveryQuery(newQuery, currentRole);
+
+    // Call backend evaluation for database event tracking
+    try {
+      const backendRes = await recommendationApi.evaluateQuery(newQuery);
+      if (backendRes?.eventId) {
+        setActiveEventId(backendRes.eventId);
+      } else {
+        setActiveEventId(`REC-${Date.now().toString().slice(-6)}`);
+      }
+    } catch (err) {
+      setActiveEventId(`REC-${Date.now().toString().slice(-6)}`);
+    }
+
     if (recordAssistantAudit) {
       recordAssistantAudit({
         eventType: 'AI_RECOMMENDATION_GENERATED',
@@ -170,6 +207,50 @@ export const DiscoveryAssistantPage = () => {
         outcome: evalRes.status,
         details: `Engine evaluated query "${newQuery}" -> ${evalRes.status}`,
       });
+    }
+  };
+
+  // Action: Submit Helpful / Not Helpful Feedback
+  const handleHelpfulFeedback = async (type) => {
+    const eventId = activeEventId || `REC-${Date.now().toString().slice(-6)}`;
+    const targetKey = discoveryResult?.feature?.id || 'current';
+
+    setFeedbackStatus((prev) => ({
+      ...prev,
+      [targetKey]: type,
+    }));
+
+    try {
+      await recommendationApi.submitFeedback(eventId, type);
+    } catch (err) {
+      console.warn('Recommendation feedback offline fallback:', err.message);
+    }
+
+    if (recordAssistantAudit) {
+      recordAssistantAudit({
+        eventType: 'RECOMMENDATION_FEEDBACK_RECORDED',
+        featureId: discoveryResult?.feature?.id || 'discovery-assistant',
+        outcome: type.toUpperCase(),
+        query: query || 'Quick Recommendation',
+        details: `Telemetry recorded: User marked recommendation as ${type} (${eventId})`,
+      });
+    }
+
+    if (type === 'helpful') {
+      showToast(
+        'Feedback Recorded',
+        'Thank you! Recommendation marked helpful and recorded for heuristic accuracy telemetry.',
+        'success'
+      );
+    } else {
+      showToast(
+        'Feedback Recorded',
+        'Recommendation marked not helpful. Opening refinement modal to capture override justification...',
+        'info'
+      );
+      if (discoveryResult?.feature) {
+        handleOpenRejectModal(discoveryResult.feature, discoveryResult);
+      }
     }
   };
 
@@ -206,11 +287,26 @@ export const DiscoveryAssistantPage = () => {
   };
 
   // Action: Confirm Rejection & Log Override Reason
-  const handleSubmitRejection = () => {
+  const handleSubmitRejection = async () => {
     const reasonText =
       overrideModal.selectedReason === 'Other'
         ? overrideModal.customReason || 'Custom user feedback'
         : overrideModal.selectedReason;
+
+    // Dispatch to persistent backend event telemetry
+    try {
+      await recommendationApi.submitOverride({
+        recommendationId: activeEventId || `REC-${Date.now().toString().slice(-6)}`,
+        query: query || 'Quick Recommendation',
+        taskGoal: query || 'Quick Recommendation',
+        recommendedFeatureId: overrideModal.feature?.id,
+        selectedFeatureId: 'rejected_none',
+        reason: reasonText,
+        notes: overrideModal.customReason || reasonText,
+      });
+    } catch (e) {
+      console.warn('Backend override logging fallback:', e.message);
+    }
 
     if (recordAssistantAudit && overrideModal.feature) {
       recordAssistantAudit({
@@ -246,7 +342,21 @@ export const DiscoveryAssistantPage = () => {
   };
 
   // Action: Choose Another Feature
-  const handleSelectAlternative = (newFeature) => {
+  const handleSelectAlternative = async (newFeature) => {
+    try {
+      await recommendationApi.submitOverride({
+        recommendationId: activeEventId || `REC-${Date.now().toString().slice(-6)}`,
+        query: query || 'Direct Exploration',
+        taskGoal: query || 'Direct Exploration',
+        recommendedFeatureId: alternativeModal.originalFeature?.id,
+        selectedFeatureId: newFeature.id,
+        reason: `User bypassed ${alternativeModal.originalFeature?.title || 'recommended feature'} in favor of ${newFeature.title}`,
+        notes: 'User directly selected alternative feature',
+      });
+    } catch (e) {
+      console.warn('Backend override logging fallback:', e.message);
+    }
+
     if (recordAssistantAudit && alternativeModal.originalFeature) {
       recordAssistantAudit({
         eventType: 'ALTERNATIVE_FEATURE_SELECTED',
@@ -555,6 +665,27 @@ export const DiscoveryAssistantPage = () => {
                   ))}
                 </div>
               </div>
+
+              {/* Recent Discovery History */}
+              {queryHistory && queryHistory.length > 0 && (
+                <div className="pt-2 border-t border-slate-800/60">
+                  <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 mb-1.5">
+                    <History className="w-3.5 h-3.5 text-indigo-400" />
+                    <span>Recent Query History:</span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {queryHistory.map((hQuery, i) => (
+                      <button
+                        key={i}
+                        onClick={() => handleQuerySelect(hQuery)}
+                        className="text-[11px] px-2.5 py-1 rounded-lg bg-slate-950/80 hover:bg-slate-850 border border-slate-800 text-slate-400 hover:text-slate-200 transition-colors flex items-center gap-1"
+                      >
+                        <span>{hQuery}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </GlassCard>
 
@@ -876,11 +1007,24 @@ export const DiscoveryAssistantPage = () => {
                   <div className="flex flex-row lg:flex-col items-center lg:items-end justify-between lg:justify-start gap-3 p-4 rounded-2xl bg-slate-950/80 border border-slate-800 lg:min-w-[170px]">
                     <div className="text-left lg:text-right">
                       <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-                        Confidence
+                        Confidence Level
                       </div>
                       <div className="text-2xl font-black text-white flex items-center lg:justify-end gap-1 text-cyan-300">
                         <Sparkles className="w-5 h-5 text-indigo-400" />
                         <span>{discoveryResult.confidenceStr}</span>
+                      </div>
+                      <div className="mt-1 flex items-center gap-1.5 lg:justify-end">
+                        <span
+                          className={`text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full border ${
+                            discoveryResult.confidenceLevel === 'High'
+                              ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                              : discoveryResult.confidenceLevel === 'Medium'
+                              ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                              : 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                          }`}
+                        >
+                          {discoveryResult.confidenceLevel || 'High'} Confidence
+                        </span>
                       </div>
                     </div>
 
@@ -971,10 +1115,47 @@ export const DiscoveryAssistantPage = () => {
                   )}
                 </div>
 
+                {/* Recommendation Helpfulness Feedback Loop */}
+                <div className="mt-4 p-3.5 rounded-xl bg-slate-950/80 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                  <div className="flex items-center gap-2 text-slate-300">
+                    <Sparkles className="w-4 h-4 text-cyan-400" />
+                    <span className="font-semibold">Was this recommendation helpful?</span>
+                    <span className="text-[10px] text-slate-500 font-mono hidden md:inline">
+                      (Governance & Heuristics Telemetry)
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => handleHelpfulFeedback('helpful')}
+                      className={`px-3 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1.5 transition-all ${
+                        feedbackStatus[discoveryResult.feature.id] === 'helpful'
+                          ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300 shadow-sm shadow-emerald-950'
+                          : 'bg-slate-900 border-slate-800 text-slate-300 hover:text-emerald-400 hover:border-emerald-500/30'
+                      }`}
+                    >
+                      <ThumbsUp className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>{feedbackStatus[discoveryResult.feature.id] === 'helpful' ? 'Marked Helpful' : 'Helpful'}</span>
+                    </button>
+
+                    <button
+                      onClick={() => handleHelpfulFeedback('not_helpful')}
+                      className={`px-3 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1.5 transition-all ${
+                        feedbackStatus[discoveryResult.feature.id] === 'not_helpful'
+                          ? 'bg-rose-500/20 border-rose-500/40 text-rose-300 shadow-sm shadow-rose-950'
+                          : 'bg-slate-900 border-slate-800 text-slate-300 hover:text-rose-400 hover:border-rose-500/30'
+                      }`}
+                    >
+                      <ThumbsDown className="w-3.5 h-3.5 text-rose-400" />
+                      <span>{feedbackStatus[discoveryResult.feature.id] === 'not_helpful' ? 'Marked Not Helpful' : 'Not helpful'}</span>
+                    </button>
+                  </div>
+                </div>
+
                 {/* =========================================================================
                     THREE RECOMMENDATION OUTCOME ACTIONS
                 ========================================================================= */}
-                <div className="mt-5 pt-4 border-t border-slate-800 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                <div className="mt-4 pt-4 border-t border-slate-800 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => handleOpenRejectModal(discoveryResult.feature, discoveryResult)}

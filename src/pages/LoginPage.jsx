@@ -57,19 +57,24 @@ export const LoginPage = () => {
     setIsLoading(true);
 
     // Simulate authentic network SSO authentication latency
-    setTimeout(() => {
-      const result = login(identifier, password);
-      setIsLoading(false);
+    setTimeout(async () => {
+      try {
+        const result = await login(identifier, password);
+        setIsLoading(false);
 
-      if (result.success) {
-        setLoginSuccess(true);
-        setActiveAccountLabel(result.role);
-        setTimeout(() => {
-          const from = location.state?.from?.pathname || '/dashboard';
-          navigate(from, { replace: true });
-        }, 600);
-      } else {
-        setError(result.error);
+        if (result.success) {
+          setLoginSuccess(true);
+          setActiveAccountLabel(result.role);
+          setTimeout(() => {
+            const from = location.state?.from?.pathname || '/dashboard';
+            navigate(from, { replace: true });
+          }, 600);
+        } else {
+          setError(result.error);
+        }
+      } catch (err) {
+        setIsLoading(false);
+        setError(err.message || 'Authentication failed.');
       }
     }, 450);
   };
@@ -86,18 +91,23 @@ export const LoginPage = () => {
     setError(null);
     setIsLoading(true);
 
-    setTimeout(() => {
-      const result = login(acc.email, acc.password);
-      setIsLoading(false);
+    setTimeout(async () => {
+      try {
+        const result = await login(acc.email, acc.password);
+        setIsLoading(false);
 
-      if (result.success) {
-        setLoginSuccess(true);
-        setActiveAccountLabel(result.role);
-        setTimeout(() => {
-          navigate('/dashboard', { replace: true });
-        }, 500);
-      } else {
-        setError(result.error);
+        if (result.success) {
+          setLoginSuccess(true);
+          setActiveAccountLabel(result.role);
+          setTimeout(() => {
+            navigate('/dashboard', { replace: true });
+          }, 500);
+        } else {
+          setError(result.error);
+        }
+      } catch (err) {
+        setIsLoading(false);
+        setError(err.message || 'Authentication failed.');
       }
     }, 400);
   };

@@ -159,3 +159,13 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# Environment Variables & Uploads
+.env
+.env*.local
+server/uploads/*
+!server/uploads/.gitkeep
+# SQLite database files
+server/data/*.db
+server/data/*.db-shm
+server/data/*.db-wal

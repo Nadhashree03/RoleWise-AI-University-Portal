@@ -32,6 +32,7 @@ import { GlassCard } from '../components/common/GlassCard';
 import { RoleBadge } from '../components/common/RoleBadge';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { ErrorBoundary } from '../components/common/ErrorBoundary';
+import { auditApi } from '../services/api';
 
 const AuditTrailPageContent = () => {
   const {
@@ -71,6 +72,57 @@ const AuditTrailPageContent = () => {
       showToast('Sync Notice', 'Local audit records active.', 'info');
     } finally {
       setIsSyncing(false);
+    }
+  };
+
+  // Cryptographic Audit Hash Chaining state & handlers
+  const [verificationResult, setVerificationResult] = useState(null);
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [isTampering, setIsTampering] = useState(false);
+  const [isRepairing, setIsRepairing] = useState(false);
+
+  const handleVerifyAuditChain = async () => {
+    setIsVerifying(true);
+    try {
+      const res = await auditApi.verifyChain();
+      setVerificationResult(res);
+      if (res.valid) {
+        showToast('Chain Verified', `Cryptographic hash chain intact across all ${res.totalLogs} events.`, 'success');
+      } else {
+        showToast('Integrity Alert', `Audit chain broken at event ${res.brokenAt}`, 'error');
+      }
+    } catch (err) {
+      showToast('Verification Failed', err.message, 'error');
+    } finally {
+      setIsVerifying(false);
+    }
+  };
+
+  const handleSimulateTamper = async () => {
+    setIsTampering(true);
+    try {
+      const res = await auditApi.simulateTamper();
+      showToast('Tamper Injected', `Tampered event ${res.tamperedId} to demonstrate detection.`, 'info');
+      await handleVerifyAuditChain();
+      if (syncWithBackend) await syncWithBackend();
+    } catch (err) {
+      showToast('Tamper Simulation Failed', err.message, 'error');
+    } finally {
+      setIsTampering(false);
+    }
+  };
+
+  const handleRepairChain = async () => {
+    setIsRepairing(true);
+    try {
+      const res = await auditApi.repairChain();
+      showToast('Chain Repaired', `Recalculated cryptographic hashes across ${res.repairedCount} events.`, 'success');
+      await handleVerifyAuditChain();
+      if (syncWithBackend) await syncWithBackend();
+    } catch (err) {
+      showToast('Repair Failed', err.message, 'error');
+    } finally {
+      setIsRepairing(false);
     }
   };
 
@@ -330,6 +382,51 @@ const AuditTrailPageContent = () => {
         </GlassCard>
       </div>
 
+      {/* Real-time Cryptographic Audit Verification Banner */}
+      {verificationResult && (
+        <div
+          data-testid="audit-verification-status"
+          className={`p-4 rounded-2xl border transition-all ${
+            verificationResult.valid
+              ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+              : 'bg-rose-500/10 border-rose-500/30 text-rose-300'
+          }`}
+        >
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              {verificationResult.valid ? (
+                <ShieldCheck className="w-5 h-5 text-emerald-400 flex-shrink-0" />
+              ) : (
+                <ShieldAlert className="w-5 h-5 text-rose-400 flex-shrink-0" />
+              )}
+              <div>
+                <div className="text-sm font-bold">
+                  {verificationResult.valid
+                    ? 'Cryptographic Hash Chain Intact (SHA-256)'
+                    : 'Cryptographic Hash Integrity Compromised!'}
+                </div>
+                <div className="text-xs opacity-90">
+                  {verificationResult.valid
+                    ? `Cryptographic hash chain intact across all ${verificationResult.totalLogs} events. Genesis root verified.`
+                    : `Tamper detected at event: ${verificationResult.brokenAt}. ${verificationResult.reason}`}
+                </div>
+              </div>
+            </div>
+            {currentRole === ROLES.ADMIN && !verificationResult.valid && (
+              <button
+                onClick={handleRepairChain}
+                disabled={isRepairing}
+                data-testid="repair-audit-chain-btn"
+                className="px-3.5 py-1.5 rounded-xl bg-rose-500 hover:bg-rose-600 text-white text-xs font-semibold flex items-center gap-1.5 transition-colors whitespace-nowrap shadow-lg shadow-rose-950/50"
+              >
+                <RotateCcw className={`w-3.5 h-3.5 ${isRepairing ? 'animate-spin' : ''}`} />
+                <span>{isRepairing ? 'Repairing...' : 'Repair & Re-anchor Chain'}</span>
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Main Tabs Navigation */}
       <div className="flex border-b border-slate-800 gap-2">
         <button
@@ -382,7 +479,41 @@ const AuditTrailPageContent = () => {
             />
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={handleVerifyAuditChain}
+              disabled={isVerifying}
+              data-testid="verify-audit-chain-btn"
+              className="px-3.5 py-2 rounded-xl bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-500/40 text-xs font-semibold text-indigo-300 hover:text-white flex items-center gap-1.5 transition-colors whitespace-nowrap"
+              title="Verify cryptographic SHA-256 hash chain from genesis block"
+            >
+              <ShieldCheck className={`w-3.5 h-3.5 ${isVerifying ? 'animate-spin' : ''}`} />
+              <span>{isVerifying ? 'Verifying...' : 'Verify Hash Chain'}</span>
+            </button>
+            {currentRole === ROLES.ADMIN && (
+              <>
+                <button
+                  onClick={handleSimulateTamper}
+                  disabled={isTampering}
+                  data-testid="simulate-tamper-btn"
+                  className="px-3 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-xs font-semibold text-rose-300 hover:text-rose-200 flex items-center gap-1.5 transition-colors whitespace-nowrap"
+                  title="Tamper an audit log entry to simulate cryptographic fraud detection"
+                >
+                  <AlertTriangle className={`w-3.5 h-3.5 ${isTampering ? 'animate-spin' : ''}`} />
+                  <span>{isTampering ? 'Tampering...' : 'Simulate Tamper'}</span>
+                </button>
+                <button
+                  onClick={handleRepairChain}
+                  disabled={isRepairing}
+                  data-testid="repair-audit-chain-btn"
+                  className="px-3 py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-xs font-semibold text-amber-300 hover:text-amber-200 flex items-center gap-1.5 transition-colors whitespace-nowrap"
+                  title="Recalculate hashes and restore chain integrity"
+                >
+                  <RotateCcw className={`w-3.5 h-3.5 ${isRepairing ? 'animate-spin' : ''}`} />
+                  <span>{isRepairing ? 'Repairing...' : 'Repair Chain'}</span>
+                </button>
+              </>
+            )}
             <button
               onClick={handleRefresh}
               disabled={isSyncing}
@@ -943,12 +1074,21 @@ const AuditTrailPageContent = () => {
             </div>
 
             {/* Cryptographic Hash Verification */}
-            <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-1">
-              <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
-                Cryptographic Block Seal
+            <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
+              <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block">
+                Cryptographic Block Seal & Chaining (SHA-256)
               </span>
-              <div className="font-mono text-[11px] text-slate-300 break-all bg-slate-900/90 p-2 rounded-lg border border-slate-800/80">
-                SHA256: 4f8b2e91a03d7c56938ef1284d720ba3901fcb9e28d6174a723e410b29841cae
+              <div className="space-y-1">
+                <div className="text-[10px] text-slate-500 font-mono">Current Block Hash:</div>
+                <div className="font-mono text-[11px] text-emerald-400 break-all bg-slate-900/90 p-2 rounded-lg border border-slate-800/80">
+                  {selectedEventDetail.hash || 'GENESIS_BLOCK_HEAD'}
+                </div>
+              </div>
+              <div className="space-y-1">
+                <div className="text-[10px] text-slate-500 font-mono">Parent Block Hash (prev_hash):</div>
+                <div className="font-mono text-[11px] text-cyan-400 break-all bg-slate-900/90 p-2 rounded-lg border border-slate-800/80">
+                  {selectedEventDetail.prev_hash || 'GENESIS_BLOCK_0000000000000000000000000000000000000000000000000000000000000000'}
+                </div>
               </div>
             </div>
 

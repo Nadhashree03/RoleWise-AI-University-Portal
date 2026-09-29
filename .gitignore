@@ -169,3 +169,6 @@ server/uploads/*
 server/data/*.db
 server/data/*.db-shm
 server/data/*.db-wal
+test-results/
+
+test-results/

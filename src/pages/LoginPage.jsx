@@ -198,6 +198,7 @@ export const LoginPage = () => {
                   </div>
                   <input
                     type="text"
+                    data-testid="login-identifier-input"
                     value={identifier}
                     onChange={(e) => {
                       setIdentifier(e.target.value);
@@ -224,6 +225,7 @@ export const LoginPage = () => {
                   </div>
                   <input
                     type={showPassword ? 'text' : 'password'}
+                    data-testid="login-password-input"
                     value={password}
                     onChange={(e) => {
                       setPassword(e.target.value);
@@ -249,6 +251,7 @@ export const LoginPage = () => {
               <div className="pt-2">
                 <button
                   type="submit"
+                  data-testid="login-submit-btn"
                   disabled={isLoading || loginSuccess}
                   className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-indigo-600 via-purple-600 to-cyan-600 hover:from-indigo-500 hover:to-cyan-500 text-white text-xs font-bold shadow-lg shadow-indigo-950/60 transition-all hover:scale-[1.01] active:scale-[0.99] flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
                 >
@@ -331,6 +334,7 @@ export const LoginPage = () => {
                     <div className="flex items-center gap-1.5 flex-shrink-0">
                       <button
                         type="button"
+                        data-testid={`quick-fill-${acc.role}`}
                         onClick={() => handleQuickFill(acc)}
                         className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-750 text-slate-300 hover:text-white text-[11px] font-medium transition-colors"
                         title="Fill inputs"
@@ -339,6 +343,7 @@ export const LoginPage = () => {
                       </button>
                       <button
                         type="button"
+                        data-testid={`quick-login-${acc.role}`}
                         onClick={() => handleQuickLogin(acc)}
                         className="px-2.5 py-1.5 rounded-lg bg-indigo-600/30 hover:bg-indigo-600 text-indigo-200 hover:text-white border border-indigo-500/30 text-[11px] font-semibold transition-all shadow-sm"
                         title="Instantly sign in"

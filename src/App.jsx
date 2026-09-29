@@ -143,6 +143,14 @@ function App() {
                 </ProtectedRoute>
               }
             />
+            <Route
+              path="/audit-trail"
+              element={
+                <ProtectedRoute>
+                  <AuditTrailPage />
+                </ProtectedRoute>
+              }
+            />
             {/* Direct Workflow Routes with Explicit Role Protection */}
             {/* Student Workflows */}
             <Route

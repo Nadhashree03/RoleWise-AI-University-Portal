@@ -911,6 +911,8 @@ export const AMBIGUOUS_QUERY_INTENTS = {
       ],
       [ROLES.STUDENT]: [
         { label: 'View My Personal Course Attendance', query: 'view attendance lectures', featureId: 'view-attendance', description: 'Check personal lecture percentages and safe margins' },
+        { label: 'Check 75% Exam Qualification Status', query: 'check my attendance percentage threshold', featureId: 'view-attendance', description: 'Review subject-wise margin against statutory 75% threshold' },
+        { label: 'Request Certified Attendance Certificate', query: 'download attendance certificate', featureId: 'download-certificate', description: 'Download bona fide attendance certificate for visa or loan' },
       ],
       [ROLES.ADMIN]: [
         { label: 'Inspect System-Wide Attendance Telemetry', query: 'system portal usage analytics', featureId: 'view-analytics', description: 'Campus portal utilization heatmaps' },
@@ -968,6 +970,40 @@ export const AMBIGUOUS_QUERY_INTENTS = {
   'i need a certificate': {
     ambiguityTitle: 'Multiple Certificate Services Detected',
     description: 'You requested a certificate. Please select the certificate action needed:',
+    optionsByRole: {
+      [ROLES.STUDENT]: [
+        { label: 'Download Bona Fide Student Certificate', query: 'download certificate', featureId: 'download-certificate', description: 'Instant digitally signed bona fide certificate for passport/visa/loan' },
+        { label: 'Download Consolidated Grade Transcript', query: 'download certificate', featureId: 'download-certificate', description: 'Official marksheet and semester transcript with registrar seal' },
+        { label: 'Download Tuition Fee Clearance Certificate', query: 'download certificate', featureId: 'download-certificate', description: 'Official no-dues verification from the university bursar' },
+      ],
+      [ROLES.ADMIN]: [
+        { label: 'Batch Generate & Cryptographically Sign Degrees', query: 'generate a certificate', featureId: 'generate-certificates', description: 'Sign and issue official degree certificates with RSA-4096 signature' },
+      ],
+      [ROLES.FACULTY]: [
+        { label: 'View Student Advising Credentials', query: 'show student attendance', featureId: 'view-student-attendance', description: 'Faculty does not issue certificates; inspect student records' },
+      ],
+    },
+  },
+  certificate: {
+    ambiguityTitle: 'Multiple Certificate Services Detected',
+    description: 'You requested a certificate. Please select the certificate action needed:',
+    optionsByRole: {
+      [ROLES.STUDENT]: [
+        { label: 'Download Bona Fide Student Certificate', query: 'download certificate', featureId: 'download-certificate', description: 'Instant digitally signed bona fide certificate for passport/visa/loan' },
+        { label: 'Download Consolidated Grade Transcript', query: 'download certificate', featureId: 'download-certificate', description: 'Official marksheet and semester transcript with registrar seal' },
+        { label: 'Download Tuition Fee Clearance Certificate', query: 'download certificate', featureId: 'download-certificate', description: 'Official no-dues verification from the university bursar' },
+      ],
+      [ROLES.ADMIN]: [
+        { label: 'Batch Generate & Cryptographically Sign Degrees', query: 'generate a certificate', featureId: 'generate-certificates', description: 'Sign and issue official degree certificates with RSA-4096 signature' },
+      ],
+      [ROLES.FACULTY]: [
+        { label: 'View Student Advising Credentials', query: 'show student attendance', featureId: 'view-student-attendance', description: 'Faculty does not issue certificates; inspect student records' },
+      ],
+    },
+  },
+  certificates: {
+    ambiguityTitle: 'Multiple Certificate Services Detected',
+    description: 'You requested certificates. Please select the certificate action needed:',
     optionsByRole: {
       [ROLES.STUDENT]: [
         { label: 'Download Bona Fide Student Certificate', query: 'download certificate', featureId: 'download-certificate', description: 'Instant digitally signed bona fide certificate for passport/visa/loan' },

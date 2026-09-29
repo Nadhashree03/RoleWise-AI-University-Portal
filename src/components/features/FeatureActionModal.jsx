@@ -916,6 +916,7 @@ export const FeatureActionModal = ({ feature, onClose, showToast, recordChange, 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
       <div
+        data-testid="feature-action-modal"
         className="relative w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-3xl bg-slate-950 border border-indigo-500/30 shadow-2xl shadow-black/90 p-6 text-slate-100 flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
@@ -941,6 +942,7 @@ export const FeatureActionModal = ({ feature, onClose, showToast, recordChange, 
 
           <button
             onClick={onClose}
+            data-testid="modal-close-btn"
             className="p-1.5 rounded-xl bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
           >
             <X className="w-5 h-5" />
@@ -1132,6 +1134,7 @@ export const FeatureActionModal = ({ feature, onClose, showToast, recordChange, 
 
                   <button
                     disabled={feeStatus === 'Processing'}
+                    data-testid="proceed-to-pay-btn"
                     onClick={handleInitiatePayment}
                     className="w-full mt-2 py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-semibold text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-950/60 transition-all hover:scale-[1.01]"
                   >

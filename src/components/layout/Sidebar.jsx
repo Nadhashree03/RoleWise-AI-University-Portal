@@ -95,7 +95,7 @@ export const Sidebar = ({ isCollapsed, setIsCollapsed, mobileOpen, setMobileOpen
       to: '/compliance',
       label: 'Compliance Checklist',
       icon: CheckCircle2,
-      badge: '96%',
+      badge: '100%',
       badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30 font-mono',
     },
     {

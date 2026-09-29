@@ -244,6 +244,23 @@ export const auditApi = {
       body: JSON.stringify(eventData),
     });
   },
+
+  verifyChain: async () => {
+    return apiFetch('/audit-logs/verify');
+  },
+
+  simulateTamper: async (id) => {
+    return apiFetch('/audit-logs/simulate-tamper', {
+      method: 'POST',
+      body: JSON.stringify({ id }),
+    });
+  },
+
+  repairChain: async () => {
+    return apiFetch('/audit-logs/repair-chain', {
+      method: 'POST',
+    });
+  },
 };
 
 // ---------------------------------------------------------------------------

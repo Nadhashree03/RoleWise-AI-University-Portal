@@ -42,11 +42,13 @@ export const ConfirmDialog = ({
       onClick={onCancel}
     >
       <div
+        data-testid="high-impact-confirm-dialog"
         className={`relative w-full max-w-lg rounded-3xl bg-slate-950 border ${style.border} p-6 shadow-2xl shadow-black text-slate-100 flex flex-col`}
         onClick={(e) => e.stopPropagation()}
       >
         <button
           onClick={onCancel}
+          data-testid="confirm-dialog-close-btn"
           className="absolute top-5 right-5 p-1.5 rounded-xl bg-slate-900 text-slate-400 hover:text-white transition-colors"
         >
           <X className="w-4 h-4" />
@@ -108,7 +110,7 @@ export const ConfirmDialog = ({
         {details && (
           <div className="mb-5 p-3.5 rounded-2xl bg-slate-900/80 border border-slate-800 text-xs space-y-1.5">
             {Object.entries(details).map(([k, v]) => (
-              <div key={k} className="flex justify-between py-0.5 border-b border-slate-850 last:border-b-0">
+              <div key={k} className="flex justify-between py-0.5 border-b border-slate-855 last:border-b-0">
                 <span className="text-slate-400">{k}:</span>
                 <span className="font-semibold text-slate-200">{v}</span>
               </div>
@@ -119,12 +121,14 @@ export const ConfirmDialog = ({
         <div className="flex items-center justify-end gap-3 pt-2">
           <button
             onClick={onCancel}
+            data-testid="confirm-dialog-cancel-btn"
             className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-xs font-semibold text-slate-300 hover:text-white transition-colors"
           >
             {cancelLabel}
           </button>
           <button
             onClick={onConfirm}
+            data-testid="confirm-dialog-confirm-btn"
             className={`px-5 py-2 rounded-xl text-white text-xs font-semibold shadow-lg transition-all hover:scale-[1.02] ${style.btn}`}
           >
             {confirmLabel}

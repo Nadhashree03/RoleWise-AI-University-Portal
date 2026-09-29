@@ -76,7 +76,7 @@ export const DiscoveryAssistantPage = () => {
     'Check my attendance',
     'Download my certificate'
   ]);
-  const [expandedEvidence, setExpandedEvidence] = useState(true);
+  const [expandedEvidence, setExpandedEvidence] = useState(false);
   const [rejectedFeatures, setRejectedFeatures] = useState({}); // featureId -> reason
 
   // Fetch recent recommendation query history on mount
@@ -413,6 +413,7 @@ export const DiscoveryAssistantPage = () => {
                 >
                   <input
                     type="radio"
+                    data-testid={`override-reason-${reason.replace(/\s+/g, '-').toLowerCase()}`}
                     name="overrideReason"
                     value={reason}
                     checked={overrideModal.selectedReason === reason}
@@ -428,6 +429,7 @@ export const DiscoveryAssistantPage = () => {
               {overrideModal.selectedReason === 'Other' && (
                 <input
                   type="text"
+                  data-testid="override-custom-reason-input"
                   placeholder="Explain why this feature was not appropriate..."
                   value={overrideModal.customReason}
                   onChange={(e) =>
@@ -447,6 +449,7 @@ export const DiscoveryAssistantPage = () => {
               </button>
               <button
                 onClick={handleSubmitRejection}
+                data-testid="submit-override-reason-btn"
                 className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xs font-semibold text-white shadow-lg shadow-indigo-950"
               >
                 Submit Feedback
@@ -489,6 +492,7 @@ export const DiscoveryAssistantPage = () => {
                   return (
                     <button
                       key={f.id}
+                      data-testid={`select-alt-${f.id}`}
                       onClick={() => handleSelectAlternative(f)}
                       className="w-full p-3.5 rounded-2xl bg-slate-900/90 hover:bg-indigo-950/40 border border-slate-800 hover:border-indigo-500/40 text-left flex items-center justify-between gap-3 group transition-all"
                     >
@@ -608,6 +612,7 @@ export const DiscoveryAssistantPage = () => {
                 </div>
                 <input
                   type="text"
+                  data-testid="assistant-query-input"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleQuerySelect(query)}
@@ -624,6 +629,7 @@ export const DiscoveryAssistantPage = () => {
                 )}
                 <button
                   onClick={() => handleQuerySelect(query)}
+                  data-testid="assistant-submit-btn"
                   className="absolute right-2 px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-xs font-semibold flex items-center gap-1.5 shadow-md shadow-indigo-950 transition-all"
                 >
                   <span>Discover</span>
@@ -909,6 +915,7 @@ export const DiscoveryAssistantPage = () => {
                 </span>
               </div>
 
+              <div data-testid="recommendation-card">
               <GlassCard
                 className={`p-6 border-indigo-500/40 bg-gradient-to-b from-slate-900/95 to-slate-950 shadow-2xl transition-all ${
                   rejectedFeatures[discoveryResult.feature.id] ? 'opacity-60 border-slate-800' : ''
@@ -1047,6 +1054,7 @@ export const DiscoveryAssistantPage = () => {
                 <div className="mt-5 pt-4 border-t border-slate-800/80">
                   <button
                     onClick={() => setExpandedEvidence(!expandedEvidence)}
+                    data-testid="why-recommendation-btn"
                     className="w-full flex items-center justify-between text-xs font-semibold text-slate-300 hover:text-white transition-colors"
                   >
                     <span className="flex items-center gap-1.5">
@@ -1128,6 +1136,7 @@ export const DiscoveryAssistantPage = () => {
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => handleHelpfulFeedback('helpful')}
+                      data-testid="feedback-helpful-btn"
                       className={`px-3 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1.5 transition-all ${
                         feedbackStatus[discoveryResult.feature.id] === 'helpful'
                           ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300 shadow-sm shadow-emerald-950'
@@ -1140,6 +1149,7 @@ export const DiscoveryAssistantPage = () => {
 
                     <button
                       onClick={() => handleHelpfulFeedback('not_helpful')}
+                      data-testid="feedback-unhelpful-btn"
                       className={`px-3 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1.5 transition-all ${
                         feedbackStatus[discoveryResult.feature.id] === 'not_helpful'
                           ? 'bg-rose-500/20 border-rose-500/40 text-rose-300 shadow-sm shadow-rose-950'
@@ -1159,6 +1169,7 @@ export const DiscoveryAssistantPage = () => {
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => handleOpenRejectModal(discoveryResult.feature, discoveryResult)}
+                      data-testid="not-relevant-btn"
                       className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-850 border border-slate-800 text-xs font-semibold text-slate-400 hover:text-rose-300 flex items-center gap-1.5 transition-colors"
                       title="Reject this recommendation and record reason"
                     >
@@ -1173,6 +1184,7 @@ export const DiscoveryAssistantPage = () => {
                           originalFeature: discoveryResult.feature,
                         })
                       }
+                      data-testid="choose-another-feature-btn"
                       className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-850 border border-slate-800 text-xs font-semibold text-slate-300 hover:text-white flex items-center gap-1.5 transition-colors"
                     >
                       <SlidersHorizontal className="w-3.5 h-3.5" />
@@ -1182,6 +1194,7 @@ export const DiscoveryAssistantPage = () => {
 
                   <button
                     onClick={() => handleOpenFeature(discoveryResult.feature, discoveryResult)}
+                    data-testid="open-feature-btn"
                     className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-lg shadow-indigo-950 hover:scale-102 transition-all"
                   >
                     <span>Open Feature</span>
@@ -1189,6 +1202,7 @@ export const DiscoveryAssistantPage = () => {
                   </button>
                 </div>
               </GlassCard>
+              </div>
             </div>
           )}
 

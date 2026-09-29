@@ -1,7 +1,9 @@
 import { DatabaseSync } from 'node:sqlite';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { config } from '../config.js';
+import { backfillAuditHashChain } from './auditChain.js';
 
 // Ensure data directory exists
 const dbDir = path.dirname(config.dbPath);
@@ -10,6 +12,44 @@ if (!fs.existsSync(dbDir)) {
 }
 
 export const db = new DatabaseSync(config.dbPath);
+
+// Wrap db.prepare to guarantee cryptographic hash chaining across all audit_logs inserts
+const _originalPrepare = db.prepare.bind(db);
+
+db.prepare = function (sql) {
+  const normalized = sql.replace(/\s+/g, ' ');
+  if (/INSERT\s+INTO\s+audit_logs/i.test(normalized) && !/prev_hash/i.test(normalized)) {
+    const rewrittenSql = sql.replace(
+      /\(\s*id\s*,\s*userId\s*,\s*actor\s*,\s*role\s*,\s*action\s*,\s*module\s*,\s*status\s*,\s*ip\s*,\s*duration\s*,\s*details\s*,\s*overrideReason\s*,\s*timestamp\s*\)\s*VALUES\s*\(\s*\?\s*,\s*\?\s*,\s*\?\s*,\s*\?\s*,\s*\?\s*,\s*\?\s*,\s*\?\s*,\s*\?\s*,\s*\?\s*,\s*\?\s*,\s*\?\s*,\s*\?\s*\)/i,
+      '(id, userId, actor, role, action, module, status, ip, duration, details, overrideReason, timestamp, prev_hash, hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    );
+
+    const stmt = _originalPrepare(rewrittenSql);
+    return {
+      run(...args) {
+        const id = args[0];
+        const actor = args[2];
+        const role = args[3];
+        const action = args[4];
+        const module = args[5];
+        const status = args[6];
+        const timestamp = args[11];
+
+        const lastRow = _originalPrepare('SELECT hash FROM audit_logs WHERE hash IS NOT NULL ORDER BY rowid DESC LIMIT 1').get();
+        const prevHash = lastRow?.hash || 'GENESIS_BLOCK_0000000000000000000000000000000000000000000000000000000000000000';
+
+        const content = `${prevHash}${id || ''}${actor || ''}${role || ''}${action || ''}${module || ''}${status || ''}${timestamp || ''}`;
+        const hash = crypto.createHash('sha256').update(content).digest('hex');
+
+        return stmt.run(...args, prevHash, hash);
+      },
+      get(...args) { return stmt.get(...args); },
+      all(...args) { return stmt.all(...args); },
+    };
+  }
+
+  return _originalPrepare(sql);
+};
 
 export function initDatabase() {
   db.exec(`
@@ -97,7 +137,9 @@ export function initDatabase() {
       duration TEXT,
       details TEXT,
       overrideReason TEXT,
-      timestamp TEXT NOT NULL
+      timestamp TEXT NOT NULL,
+      prev_hash TEXT,
+      hash TEXT
     );
 
     CREATE TABLE IF NOT EXISTS change_history (
@@ -227,6 +269,20 @@ export function initDatabase() {
       status TEXT NOT NULL DEFAULT 'Active'
     );
   `);
+
+  // Dynamically verify and migrate audit_logs columns if already existing without hash chaining
+  try {
+    const auditCols = db.prepare('PRAGMA table_info(audit_logs)').all().map((c) => c.name);
+    if (!auditCols.includes('prev_hash')) {
+      db.exec('ALTER TABLE audit_logs ADD COLUMN prev_hash TEXT;');
+    }
+    if (!auditCols.includes('hash')) {
+      db.exec('ALTER TABLE audit_logs ADD COLUMN hash TEXT;');
+    }
+    backfillAuditHashChain();
+  } catch (err) {
+    console.warn('[Database] Audit hash columns check/backfill warning:', err.message);
+  }
 
   console.log('[Database] SQLite schema verified and ready at', config.dbPath);
 }

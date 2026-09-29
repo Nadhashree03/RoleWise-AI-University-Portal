@@ -1,6 +1,12 @@
 import { Router } from 'express';
 import { db } from '../database/db.js';
-import { authenticateJWT } from '../middleware/auth.js';
+import { authenticateJWT, requireRole } from '../middleware/auth.js';
+import {
+  verifyAuditChain,
+  simulateTamper,
+  repairAuditChain,
+  insertAuditLog,
+} from '../database/auditChain.js';
 
 const router = Router();
 
@@ -93,7 +99,8 @@ router.get('/', authenticateJWT, (req, res) => {
     ip: l.ip,
     duration: l.duration,
     details: l.details,
-    overrideReason: l.overrideReason,
+    prev_hash: l.prev_hash,
+    hash: l.hash,
     timestamp: l.timestamp,
   }));
 
@@ -109,7 +116,36 @@ router.get('/', authenticateJWT, (req, res) => {
   });
 });
 
-// POST /api/audit-logs
+// GET /api/audit-logs/verify - Cryptographic SHA-256 chain verification
+router.get('/verify', authenticateJWT, (req, res) => {
+  const result = verifyAuditChain();
+  res.json({
+    success: true,
+    ...result,
+  });
+});
+
+// POST /api/audit-logs/simulate-tamper - Admin-only endpoint to demonstrate hash failure
+router.post('/simulate-tamper', authenticateJWT, requireRole(['admin']), (req, res) => {
+  try {
+    const result = simulateTamper(req.body?.id);
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// POST /api/audit-logs/repair-chain - Admin-only endpoint to recalculate and repair chain
+router.post('/repair-chain', authenticateJWT, requireRole(['admin']), (req, res) => {
+  try {
+    const result = repairAuditChain();
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /api/audit-logs - Append new cryptographically chained audit log
 router.post('/', authenticateJWT, (req, res) => {
   const {
     event,
@@ -124,28 +160,27 @@ router.post('/', authenticateJWT, (req, res) => {
   const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
   const eventId = `EVT-${Date.now().toString().slice(-6)}-${Math.floor(1000 + Math.random() * 9000)}`;
 
-  db.prepare(`
-    INSERT INTO audit_logs (id, userId, actor, role, action, module, status, ip, duration, details, overrideReason, timestamp)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    eventId,
-    req.user.id,
-    `${req.user.name} (${req.user.role})`,
-    req.user.role,
-    event || action || 'ACTION_LOGGED',
-    target || mod || 'general',
+  const inserted = insertAuditLog({
+    id: eventId,
+    userId: req.user.id,
+    actor: `${req.user.name} (${req.user.role})`,
+    role: req.user.role,
+    action: event || action || 'ACTION_LOGGED',
+    module: target || mod || 'general',
     status,
-    req.ip || '127.0.0.1',
-    `${Math.floor(25 + Math.random() * 80)}ms`,
-    details || `User executed ${action || event} on ${target || mod || 'system'}`,
-    overrideReason || null,
-    timestamp
-  );
+    ip: req.ip || '127.0.0.1',
+    duration: `${Math.floor(25 + Math.random() * 80)}ms`,
+    details: details || `User executed ${action || event} on ${target || mod || 'system'}`,
+    overrideReason: overrideReason || null,
+    timestamp,
+  });
 
   res.json({
     success: true,
     eventId,
     timestamp,
+    hash: inserted.hash,
+    prev_hash: inserted.prev_hash,
   });
 });
 

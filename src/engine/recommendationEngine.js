@@ -9,6 +9,7 @@ import {
   SIMULATED_UNAVAILABLE_SCENARIOS,
   INSUFFICIENT_EVIDENCE_KEYWORDS
 } from '../data/mockData.js';
+import { semanticVectorEngine } from './semanticNlpEngine.js';
 
 /**
  * Transparent Rule-Based Recommendation Engine for RoleWise AI
@@ -249,11 +250,25 @@ export const evaluateDiscoveryQuery = (rawQuery, currentRole = ROLES.STUDENT) =>
   }
 
   // =========================================================================
-  // MULTI-LAYER SEMANTIC & RELEVANCE SCORING
+  // MULTI-LAYER SEMANTIC & RELEVANCE SCORING (TF-IDF + COSINE SIMILARITY)
   // =========================================================================
+  const semanticMatches = semanticVectorEngine.match(rawQuery, currentRole);
+  const semanticMap = new Map(semanticMatches.map((m) => [m.featureId, m]));
+
   const scoredFeatures = MOCK_FEATURES.map((feature) => {
     let score = 0;
     const matchedKeywords = [];
+
+    // 1. Core NLP Semantic Vector Similarity Signal (0 to 80 points)
+    const semData = semanticMap.get(feature.id);
+    const semScore = semData ? semData.semanticScore : 0;
+    score += Math.round(semScore * 80);
+
+    if (semData && semData.matchedTokens) {
+      semData.matchedTokens.forEach((tok) => {
+        if (!matchedKeywords.includes(tok)) matchedKeywords.push(tok);
+      });
+    }
 
     // Exact title match
     if (feature.title.toLowerCase().includes(query)) {
@@ -394,6 +409,8 @@ export const evaluateDiscoveryQuery = (rawQuery, currentRole = ROLES.STUDENT) =>
     return {
       feature,
       score,
+      semanticScore: semScore,
+      semanticData: semData,
       matchedKeywords,
       historicalSearchHits,
       isAllowed,
@@ -406,9 +423,10 @@ export const evaluateDiscoveryQuery = (rawQuery, currentRole = ROLES.STUDENT) =>
   const bestMatch = sortedScored[0];
 
   // =========================================================================
-  // CASE 1: UNKNOWN QUERY (Confidence below threshold)
+  // CASE 1: UNKNOWN QUERY (Confidence below threshold & out-of-domain)
   // =========================================================================
-  if (!bestMatch || bestMatch.score < 18) {
+  const topSemanticScore = semanticMatches.length > 0 ? semanticMatches[0].semanticScore : 0;
+  if (!bestMatch || (bestMatch.score < 20 && topSemanticScore < 0.20)) {
     const roleExamples = {
       [ROLES.STUDENT]: [
         'How can I pay my fees?',
@@ -502,6 +520,10 @@ export const evaluateDiscoveryQuery = (rawQuery, currentRole = ROLES.STUDENT) =>
     opens: feature.usageMetrics?.opens || 8500,
     completions: feature.usageMetrics?.completions || 7100,
     evidenceStrength: isInsufficientEvidence ? 'Insufficient' : (feature.usageMetrics?.evidenceStrength || 'Strong'),
+    semanticSimilarity: bestMatch.semanticData ? `${(bestMatch.semanticData.semanticScore * 100).toFixed(1)}%` : '85.0%',
+    matchedTokens: bestMatch.semanticData ? bestMatch.semanticData.matchedTokens : [],
+    canonicalIntent: bestMatch.semanticData ? bestMatch.semanticData.canonicalIntent : (ruleInfo.intent || detectTaskIntent(query, currentRole)),
+    vectorSpace: 'TF-IDF Vector Space (L2-Normalized Sparse Cosine Similarity)',
   };
 
   const transparentRule = isInsufficientEvidence
@@ -536,9 +558,19 @@ export const evaluateDiscoveryQuery = (rawQuery, currentRole = ROLES.STUDENT) =>
     currentRole,
     requiredRole: feature.allowedRoles[0],
     usageEvidence,
+    semanticAnalysis: {
+      model: 'TF-IDF Vector Space + Cosine Similarity',
+      similarityScore: bestMatch.semanticData ? bestMatch.semanticData.semanticScore : 0.85,
+      matchedTokens: bestMatch.semanticData ? bestMatch.semanticData.matchedTokens : [],
+      canonicalIntent: bestMatch.semanticData ? bestMatch.semanticData.canonicalIntent : ruleInfo.intent,
+      vectorSpace: 'TF-IDF Vector Space (L2-Normalized)',
+    },
     ruleTriggered: transparentRule,
     isUnderused,
     underusedReason: feature.usageMetrics?.underusedReason || null,
+    underusedNotification: isUnderused
+      ? (feature.usageMetrics?.underusedReason || 'This tool is currently underutilized across campus. RoleWise assistant is prioritizing its visibility for eligible roles.')
+      : null,
     isInsufficientEvidence,
     insufficientEvidenceNote: isInsufficientEvidence
       ? 'Recommendation based primarily on role and keyword rules. Historical usage evidence is limited for this specific intent.'

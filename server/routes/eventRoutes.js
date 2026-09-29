@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { db } from '../database/db.js';
 import { authenticateJWT } from '../middleware/auth.js';
+import { telemetryService } from '../telemetry/telemetryService.js';
 
 const router = Router();
 
@@ -27,8 +28,16 @@ const VALID_FEATURES = [
   'generate-certificates'
 ];
 
+// GET /api/events/telemetry-status
+router.get('/telemetry-status', authenticateJWT, (req, res) => {
+  res.json({
+    success: true,
+    ...telemetryService.getStatus()
+  });
+});
+
 // POST /api/events/feature-usage
-router.post('/feature-usage', authenticateJWT, (req, res) => {
+router.post('/feature-usage', authenticateJWT, async (req, res) => {
   const {
     feature_id,
     task_goal,
@@ -63,32 +72,34 @@ router.post('/feature-usage', authenticateJWT, (req, res) => {
   const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
 
   try {
-    db.prepare(`
-      INSERT INTO feature_usage_events (
-        id, anonymous_user_id, role, feature_id, task_goal, help_query,
-        event_type, discovered, completed, success, source, experiment_group, duration_ms, timestamp
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      eventId,
+    const result = await telemetryService.recordEvent({
+      id: eventId,
       anonymous_user_id,
       role,
-      feature_id || 'unknown',
-      task_goal || null,
-      help_query || null,
-      normalizedEventType,
-      discovered ? 1 : 0,
-      completed ? 1 : 0,
-      success ? 1 : 0,
+      feature_id: feature_id || 'unknown',
+      task_goal: task_goal || null,
+      help_query: help_query || null,
+      event_type: normalizedEventType,
+      discovered: discovered ? 1 : 0,
+      completed: completed ? 1 : 0,
+      success: success ? 1 : 0,
       source,
       experiment_group,
-      duration_ms || 0,
+      duration_ms: duration_ms || 0,
       timestamp
-    );
+    });
+
+    if (!result.success) {
+      return res.status(500).json({ success: false, error: result.error || 'Failed to record event.' });
+    }
 
     res.json({
       success: true,
       eventId,
-      message: 'Feature usage event recorded successfully.'
+      message: 'Feature usage event recorded successfully.',
+      sink: result.sink,
+      streamed: result.streamed,
+      fallback: result.fallback
     });
   } catch (err) {
     console.error('Error logging feature usage event:', err);
